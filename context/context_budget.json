@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "as_of": "2026-06-24",
+  "budgets_bytes": {
+    "startup_entry": 8192,
+    "active_index": 10240,
+    "domain_index": 15360,
+    "archive_index": 15360,
+    "handoff": 12288,
+    "long_memory": 25600,
+    "default_markdown": 25600,
+    "startup_pack_total": 40960
+  },
+  "startup_files": [
+    "AGENTS.md",
+    "README.md",
+    "context/STARTUP_CONTEXT.md",
+    "context/INDEX_ACTIVE.md",
+    "context/INDEX_DOMAINS.md",
+    "START_HERE_MEMORY.md"
+  ],
+  "archive_prefixes": [
+    "var/",
+    "outputs/",
+    "logs/",
+    ".source_cache/"
+  ],
+  "never_startup_prefixes": [
+    "var/",
+    "outputs/",
+    "logs/",
+    ".source_cache/"
+  ]
+}
+

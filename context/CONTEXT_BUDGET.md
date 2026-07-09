@@ -19,6 +19,7 @@ therefore needs durable context budgets, not just better notes.
 Startup pack means:
 
 - `AGENTS.md`
+- `NORTH_STAR.md`
 - `README.md`
 - `context/STARTUP_CONTEXT.md`
 - `context/INDEX_ACTIVE.md`
@@ -48,4 +49,3 @@ For strict checks:
 ```bash
 python3 tools/context_budget_check.py --fail-on-over-budget
 ```
-

@@ -37,6 +37,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "startup_files": [
         "AGENTS.md",
+        "NORTH_STAR.md",
         "README.md",
         "context/STARTUP_CONTEXT.md",
         "context/INDEX_ACTIVE.md",

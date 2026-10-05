@@ -33,7 +33,7 @@
 
 ## 快速开始
 
-需要 bash 和 Python 3.10 或更高版本（在 3.12 上测试）。git 可选。
+需要 bash 和 Python 3.10 或更高版本（在 3.12 和 3.13 上测试）。git 可选。
 
 ```bash
 git clone <repo-url> context-governor
@@ -180,20 +180,20 @@ python3 -m unittest discover -s tests -v
 
 ## 项目历史
 
-提交时间沿用作者本机的原始记录（澳大利亚东部时间）：
+提交时间沿用作者本机的原始记录（本机时间，UTC+10/+11）：
 
 - 2026-06-24 02:53：Markdown 上下文预算检查。
-- 2026-06-24 白天写成 Context Governor 和 Keeper，2026-07-04 18:51 第一次提交。
+- 2026-06-24 白天写成 Context Governor 和 Keeper 的主体（据本机文件时间），2026-07-04 18:51 第一次提交。
 - 2026-07-10 05:20：预算检查把 `NORTH_STAR.md` 列为启动文件。
 - 2026-10-05：开源整理。工具最初在一个私有工作区里使用；开源时把专用的项目名、规则和示例换成了中立内容，规则改为从配置读取，补了示例工作区、测试和文档。同一天修好了 `default` 以外项目的启动预算和总控，并加了业务 runner 设置（`set_project_runner.py`）。
 
 ## English
 
-**Context Governor** keeps an AI coding agent's start-up context small and trustworthy. The agent starts from a budgeted, generated `BOOT.md`, a startup bundle and bounded index views. Full indexes are query-only, raw evidence is returned as pointers, and holdout or sealed paths are refused. Separate audits report blocking verdicts: an integrity audit (BOOT size and pointers, recursive entry files, forbidden BOOT content, semantic drift, holdout lock, authority ceiling), a startup budget test that blocks when a full index, raw evidence or holdout content leaks into startup context, and a recursive-entry detector. Change-control checks classify edits before they happen, and one orchestrator reruns every step and test with a step audit; the final report reads the integrity result from its own audit file, so reruns agree. **Keeper** is a Chinese command entry (`管家`, `上下文管家`, `ck`) over the same scripts.
+**Context Governor** keeps an AI coding agent's start-up context small and trustworthy. The agent starts from a budgeted, generated `BOOT.md`, a startup bundle and bounded index views. Full indexes are query-only, raw evidence is returned as pointers, and holdout or sealed paths are refused. Separate audits report blocking verdicts: an integrity audit (BOOT size and pointers, recursive entry files, forbidden BOOT content, semantic drift, holdout lock, authority ceiling), a startup budget test that blocks when a full index, raw evidence or holdout content leaks into startup context, and a recursive-entry detector. Change-control checks classify edits before they happen, and one orchestrator reruns every step and test with a step audit; the final report reads the integrity result from its own audit file, so reruns agree. **Keeper** is a Chinese command entry (`管家`, `上下文管家`; `ck` and `context-keeper` after `tools/keeper/install.sh`) over the same scripts.
 
 Projects other than `default` (their root may sit outside the workspace) are registered with `init_project_context.py`; `start_project.sh <id>` and `run_context_governor_all.sh --project-id <id>` check that project's own views and block any registered project's full index in its startup bundle. `continue_project.sh <id>` runs the business runner set with `tools/context/project/set_project_runner.py` (a `.py` or `.sh` file under the project's `tools/`) and refuses governance scripts with exit code 3.
 
-Quick start: `bash scripts/run_tests.sh`, then `bash scripts/make_workspace.sh /tmp/cg-demo && cd /tmp/cg-demo && bash tools/context/run_context_governor_all.sh --root .`. Requires bash and Python 3.10+, standard library only. To use it in your own repository, copy `tools/` into it and start from `examples/workspace/context/`.
+Quick start: `bash scripts/run_tests.sh`, then `bash scripts/make_workspace.sh /tmp/cg-demo && cd /tmp/cg-demo && bash tools/context/run_context_governor_all.sh --root .`. Requires bash and Python 3.10+ (tested on 3.12 and 3.13), standard library only. To use it in your own repository, copy `tools/` into it and start from `examples/workspace/context/`.
 
 Limits: this is a context-governance and verification tool, not an OS-level sandbox or a formal security proof. Gates only bind agents that use them; holdout detection is path-based and drift detection is regex-based. Audit outputs under `var/` contain absolute local paths and should not be committed.
 

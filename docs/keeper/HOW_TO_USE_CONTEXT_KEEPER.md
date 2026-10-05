@@ -60,4 +60,4 @@ bash tools/keeper/keeper.sh status
 
 `status` 会给出当前项目、入口状态、`BOOT.md` 行数、启动包状态、holdout 状态、当前阶段、最新判决、当前最大 active blocker、下一步建议和最新报告路径。
 
-如果底层 `current_runner` 是 governor runner，`continue` 会提示“上下文系统已经健康，当前没有业务 runner”，不会递归执行 governor。
+如果底层 `current_runner` 是 governor runner，`continue` 会提示“上下文系统已经健康，当前没有业务 runner”和设置方法，不会递归执行 governor。业务 runner 用 `python3 tools/context/project/set_project_runner.py tools/<runner>.sh` 设置（默认设置当前项目），之后 `continue` 就会运行它。

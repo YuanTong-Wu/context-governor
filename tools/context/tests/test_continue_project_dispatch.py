@@ -11,6 +11,8 @@ STATE_FILES = [
     Path("context/TASK_STATE.json"),
     Path("context/projects/default/TASK_STATE.json"),
     Path("context/global/ACTIVE_PROJECT.json"),
+    Path("context/global/PROJECT_REGISTRY.json"),
+    Path("context/global/PROJECTS.csv"),
 ]
 
 

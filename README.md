@@ -25,7 +25,7 @@
 | 启动包与预算 | `build_startup_bundle.py`、`startup_budget_test.py` | 生成启动包；发现全量索引、原始证据、结果表或 holdout 内容混进启动上下文时给出阻断判决 |
 | 读取闸门 | `tools/context/read_gate/` | 大文件必须给理由并限定长度；原始证据只返回指针；holdout/sealed 路径拒绝读取；每次读取都记日志 |
 | 递归入口检测 | `recursive_entry_detector.py` | 按文件名和内容找出 `BOOT_FOR_BOOT`、`START_HERE_V2` 这类替代入口，白名单之外即阻断 |
-| 多项目 | `project/init_project_context.py`、`start_project.sh`、`continue_project.sh` | 项目注册表、当前项目、项目级预算；`continue` 拒绝把治理脚本当成业务 runner 重跑（退出码 3） |
+| 多项目 | `project/init_project_context.py`、`project/set_project_runner.py`、`start_project.sh`、`continue_project.sh` | 项目注册表、当前项目、项目级预算和启动包，项目根目录可以在工作区之外；启动预算按每个项目自己的视图和全量索引路径检查；`continue` 运行用 `set_project_runner.py` 设置的业务 runner，拒绝把治理脚本当成业务 runner 重跑（退出码 3） |
 | 改动控制 | `tools/dev/` | 改动前分级（preflight）、影响面、schema、路径一致性、不变量、回归检查和改动摘要 |
 | 总控 | `run_context_governor_all.sh`、`run_context_control_all.sh` | 每步带超时，逐步写审计 CSV；最终报告从独立的审计文件读取完整性判决，而不是从汇总判决读 |
 | Keeper | `tools/keeper/`、根目录的 `管家`、`上下文管家`、`k`、`ctx` | 中文命令入口：状态、下一步、继续、改动前检查、修复、报告 |
@@ -72,7 +72,7 @@ cd "$WS"
 bash tools/context/run_context_governor_all.sh --root .
 ```
 
-最少只需要 `context/SYSTEM_INVARIANTS.json` 和 `context/CONTEXT_LOAD_POLICY.md`，其余文件第一次运行时生成。`var/` 下的审计输出会记录本机绝对路径，请在你的仓库里忽略它；`context/` 下的生成物（BOOT、任务状态、索引、注册表）每次运行都会重建，是否提交由你决定，本仓库 `.gitignore` 里列出了它们。
+最少只需要 `context/SYSTEM_INVARIANTS.json` 和 `context/CONTEXT_LOAD_POLICY.md`，其余文件第一次运行时生成。`var/` 下的审计输出会记录本机绝对路径，请在你的仓库里忽略它。`context/` 下的生成物（BOOT、任务状态、索引、启动包）每次运行都会重建；注册表 `context/global/PROJECT_REGISTRY.json` 保存项目注册信息（根目录、名称、业务 runner），每次运行只更新不重建。是否提交由你决定，本仓库 `.gitignore` 里列出了它们。
 
 项目 ID `default` 是保留的：它代表工作区根目录本身，`BOOT.md`、`context/TASK_STATE.json` 和 `context/indexes/` 都属于它。其他项目用 `init_project_context.py` 注册，文件放在 `context/projects/<id>/`。注册表里，工作区内的项目根目录存成相对路径（根目录就是 `.`）。
 
@@ -94,11 +94,11 @@ bash tools/context/run_context_governor_all.sh --root .
 | 检查 | 判决 | 输出 |
 |---|---|---|
 | 完整性审计 | `CONTEXT_INTEGRITY_PASS`，或 `CONTEXT_INTEGRITY_FAIL_BOOT_TOO_LARGE` / `_RECURSIVE_ENTRY` / `_STATE_TOO_LARGE` / `_HOLDOUT_RISK` / `_SEMANTIC_DRIFT` / `_MISSING_POINTER`（退出码 1） | `var/context_control_2026_06_23/audit/context_integrity_verdict.json` 和逐项 CSV |
-| 启动预算 | `STARTUP_BUDGET_PASS`，或 `STARTUP_BUDGET_FAIL_FULL_INDEX_INCLUDED` / `_RAW_EVIDENCE_INCLUDED` / `_HOLDOUT_RISK` / `_MISSING_CURRENT_RUNNER` / `_TOO_LARGE`（退出码 2） | `var/context_governor_2026_06_24/audit/startup_budget_*` |
+| 启动预算 | `STARTUP_BUDGET_PASS`，或 `STARTUP_BUDGET_FAIL_FULL_INDEX_INCLUDED` / `_RAW_EVIDENCE_INCLUDED` / `_HOLDOUT_RISK` / `_MISSING_CURRENT_RUNNER` / `_TOO_LARGE`，其余失败（如启动包没指向视图、缺下一步）为 `_UNKNOWN`（退出码 2）。默认检查当前项目，`--project-id` 指定项目 | `var/context_governor_2026_06_24/audit/startup_budget_*`，逐项结果在 `startup_budget_check.csv` |
 | 递归入口 | `RECURSIVE_ENTRY_PASS` / `RECURSIVE_ENTRY_FAIL`（退出码 2） | `var/context_governor_2026_06_24/audit/recursive_entry_scan.csv` |
 | 读取闸门 | 正文（`mode: content`）、只给指针（`pointer_only`）或拒绝（`LARGE_FILE_REQUIRES_REASON`、`HOLDOUT_CONTENT_READ_DENIED` 等，退出码 2） | `context/read_logs/CONTEXT_READ_LOG.jsonl` |
 | 改动前分级 | `LOW_RISK` / `RISK_REVIEW_REQUIRED` / `UNKNOWN_CHANGE_SURFACE`（没有 git 改动也没给 `--changed-file`） | `var/dev_change_control_2026_06_24/` |
-| 继续执行 | 运行当前业务 runner；runner 缺失退出码 2，是治理脚本退出码 3，类型不支持退出码 4 | 写入 gap 队列 |
+| 继续执行 | 运行项目的业务 runner（用 `set_project_runner.py` 设置）；没设置时当前 runner 是治理脚本，退出码 3；runner 文件缺失退出码 2，类型不支持退出码 4 | 写入 gap 队列 |
 | 总控 | `MULTI_PROJECT_CONTEXT_GOVERNOR_BUILT_AND_VERIFIED`，或 `..._BLOCKED_*`（退出码 1） | `var/context_governor_2026_06_24/verdict.json`、报告、`audit/governor_run_steps.csv` |
 
 gap 队列（`gap_queue.csv`）是追加的审计历史，测试故意制造的失败也会留在里面。当前是否有阻断以最终判决为准；Keeper 默认不把历史行当成当前失败。
@@ -107,7 +107,8 @@ gap 队列（`gap_queue.csv`）是追加的审计历史，测试故意制造的�
 
 ```bash
 bash tools/context/start_project.sh default --root .        # 激活项目，打印启动包、当前 runner、下一步
-bash tools/context/continue_project.sh default --root .     # 运行当前业务 runner
+python3 tools/context/project/set_project_runner.py --root . tools/jobs/run_daily.sh   # 设置当前项目的业务 runner（换成你自己的脚本）
+bash tools/context/continue_project.sh default --root .     # 运行业务 runner；没设置时退出码 3
 python3 tools/context/query_index.py --root . --index file --path-contains notes --limit 20
 python3 tools/context/read_gate/read_context_file.py notes/design_notes.md --root . --reason "当前任务需要" --max-chars 12000
 python3 tools/context/startup_budget_test.py --root .
@@ -117,12 +118,20 @@ bash tools/context/hooks/install_context_hooks.sh            # 安装 git pre-co
 python3 tools/context_budget_check.py --root . --report var/context_budget/REPORT.md
 ```
 
-注册另一个项目（可以在工作区外）：
+业务 runner 是项目根目录 `tools/` 下的 `.py` 或 `.sh` 文件，`continue_project.sh` 在工作区根目录下调用它并传 `--root <workspace>`。设置保存在注册表的 `business_runner` 字段，`update_task_state.py` 和之后每次运行都保留它；`--clear` 取消。治理脚本（`tools/context`、`tools/dev`、`tools/keeper`）不能设为业务 runner。
+
+注册另一个项目（项目根目录可以在工作区外），然后启动、设置业务 runner、继续、做完整验证：
 
 ```bash
 python3 tools/context/project/init_project_context.py --root . \
   --project-id my_project --project-name "My Project" --project-root /path/to/my_project --activate
+bash tools/context/start_project.sh my_project --root .     # 用这个项目自己的视图和全量索引路径检查启动预算
+python3 tools/context/project/set_project_runner.py --root . --project-id my_project tools/run_main.sh
+bash tools/context/continue_project.sh my_project --root .
+bash tools/context/run_context_governor_all.sh --root . --project-id my_project
 ```
+
+注册之后只需要项目 ID，已注册的根目录和名称会保留。总控不带 `--project-id` 时验证 `default`，并把当前项目切回 `default`。
 
 更多说明见 `docs/context/`、`docs/dev/` 和 `docs/keeper/`。
 
@@ -133,7 +142,7 @@ python3 tools/context/project/init_project_context.py --root . \
 ./管家 现在做到哪了
 ./管家 打开项目
 ./管家 下一步
-./管家 继续                 # 运行当前业务 runner；如果是治理脚本，只提示不执行
+./管家 继续                 # 运行当前项目的业务 runner；还没设置时只提示设置方法，不执行
 ./管家 我要改 BOOT.md       # 改动前检查
 ./管家 帮我修一下入口        # 运行 run_context_control_all.sh 修复并验证
 ./管家 报告在哪里
@@ -151,7 +160,12 @@ python3 -m unittest discover -s tests -v
 # 装了 pytest 也可以直接 pytest
 ```
 
-`tests/test_workspace.py` 先用 `scripts/make_workspace.sh` 在临时目录建一个示例工作区，然后在里面运行：5 个单元测试文件（10 个用例）、总控（17 步加首次运行的状态初始化，以及 16 个集成测试）、微内核总控、读取闸门、配置化的漂移规则、`continue` 拒绝治理 runner、改动前分级、Keeper 测试和 Markdown 预算检查。设 `KEEP_WORKSPACE=1` 可保留临时工作区。
+`tests/test_workspace.py` 用 `scripts/make_workspace.sh` 在临时目录建示例工作区，然后在里面运行：
+
+- 5 个单元测试文件（10 个用例）、总控（17 步加首次运行的状态初始化，以及 16 个集成测试）、微内核总控、读取闸门、配置化的漂移规则、`continue` 拒绝治理 runner、改动前分级、Keeper 测试和 Markdown 预算检查。
+- 多项目：在第二个工作区里注册一个根目录在工作区外的项目，检查 `start_project.sh` 通过启动预算且保留注册信息、这个项目和 `default` 的全量索引混进启动包都会阻断、`set_project_runner.py` 拒绝治理脚本和不存在的文件、业务 runner 能运行并在之后的运行中保留、对这个项目跑总控通过；再给 `default` 设置业务 runner，用 `./管家 继续` 运行，跑总控后仍保留，`--clear` 后 `continue` 又以退出码 3 拒绝。
+
+设 `KEEP_WORKSPACE=1` 可保留临时工作区。
 
 ## 限制
 
@@ -161,6 +175,8 @@ python3 -m unittest discover -s tests -v
 - `var/` 下的审计输出会记录本机绝对路径，不要提交；注册在工作区之外的项目，其根目录也以绝对路径存进注册表。
 - 输出目录名带日期（如 `var/context_governor_2026_06_24`），沿用最初版本的命名。
 - 工具需要放在被治理的工作区内部（见“接入你自己的仓库”）。
+- `BOOT.md` 只在总控和微内核总控里重建；用 `start_project.sh` 切换项目后，BOOT 里的 “Active project” 要等下一次总控才更新，当前项目以 `context/global/ACTIVE_PROJECT.json` 为准。
+- 业务 runner 必须放在项目根目录的 `tools/` 下，总是收到 `--root <workspace>`（不是项目根目录）。
 
 ## 项目历史
 
@@ -169,11 +185,13 @@ python3 -m unittest discover -s tests -v
 - 2026-06-24 02:53：Markdown 上下文预算检查。
 - 2026-06-24 白天写成 Context Governor 和 Keeper，2026-07-04 18:51 第一次提交。
 - 2026-07-10 05:20：预算检查把 `NORTH_STAR.md` 列为启动文件。
-- 2026-10-05：开源整理。工具最初在一个私有工作区里使用；开源时把专用的项目名、规则和示例换成了中立内容，规则改为从配置读取，补了示例工作区、测试和文档。
+- 2026-10-05：开源整理。工具最初在一个私有工作区里使用；开源时把专用的项目名、规则和示例换成了中立内容，规则改为从配置读取，补了示例工作区、测试和文档。同一天修好了 `default` 以外项目的启动预算和总控，并加了业务 runner 设置（`set_project_runner.py`）。
 
 ## English
 
 **Context Governor** keeps an AI coding agent's start-up context small and trustworthy. The agent starts from a budgeted, generated `BOOT.md`, a startup bundle and bounded index views. Full indexes are query-only, raw evidence is returned as pointers, and holdout or sealed paths are refused. Separate audits report blocking verdicts: an integrity audit (BOOT size and pointers, recursive entry files, forbidden BOOT content, semantic drift, holdout lock, authority ceiling), a startup budget test that blocks when a full index, raw evidence or holdout content leaks into startup context, and a recursive-entry detector. Change-control checks classify edits before they happen, and one orchestrator reruns every step and test with a step audit; the final report reads the integrity result from its own audit file, so reruns agree. **Keeper** is a Chinese command entry (`管家`, `上下文管家`, `ck`) over the same scripts.
+
+Projects other than `default` (their root may sit outside the workspace) are registered with `init_project_context.py`; `start_project.sh <id>` and `run_context_governor_all.sh --project-id <id>` check that project's own views and block any registered project's full index in its startup bundle. `continue_project.sh <id>` runs the business runner set with `tools/context/project/set_project_runner.py` (a `.py` or `.sh` file under the project's `tools/`) and refuses governance scripts with exit code 3.
 
 Quick start: `bash scripts/run_tests.sh`, then `bash scripts/make_workspace.sh /tmp/cg-demo && cd /tmp/cg-demo && bash tools/context/run_context_governor_all.sh --root .`. Requires bash and Python 3.10+, standard library only. To use it in your own repository, copy `tools/` into it and start from `examples/workspace/context/`.
 

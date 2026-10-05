@@ -47,7 +47,7 @@ write_gap() {
 import sys
 from pathlib import Path
 
-root = Path(sys.argv[1])
+root = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(root / "tools/context"))
 from governor_common import append_governor_gap
 
@@ -76,17 +76,17 @@ import json
 import sys
 from pathlib import Path
 
-root = Path(sys.argv[1])
+root = Path(sys.argv[1]).resolve()
 project_id = sys.argv[2]
 sys.path.insert(0, str(root / "tools/context"))
-from governor_common import get_project, project_abs_path
+from governor_common import get_project, project_abs_path, resolve_runner_path
 
 project = get_project(root, project_id)
 state_path = project_abs_path(root, project, project["state_path"])
 state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
 runner = str(state.get("current_runner", ""))
 if runner:
-    path = project_abs_path(root, project, runner)
+    path = resolve_runner_path(root, project, runner)
 else:
     path = Path("")
 print(runner)
@@ -96,22 +96,25 @@ PY
 CURRENT_RUNNER="$(printf "%s\n" "$runner_info" | sed -n '1p')"
 CURRENT_RUNNER_ABS="$(printf "%s\n" "$runner_info" | sed -n '2p')"
 
+# Refuse a governance runner first: it lives in the workspace, so for a project
+# rooted elsewhere it would otherwise be reported as a missing file.
+case "$CURRENT_RUNNER" in
+  tools/context/run_context_governor_all.sh|tools/context/run_context_control_all.sh|tools/context/start_project.sh|tools/context/continue_project.sh)
+    if [ "$ALLOW_GOVERNOR_RUNNER" -ne 1 ]; then
+      echo "recursive governor runner blocked: $CURRENT_RUNNER"
+      echo "set a business runner first: python3 tools/context/project/set_project_runner.py --root . --project-id $PROJECT_ID tools/<runner>.sh"
+      write_gap "recursive_governor_runner_blocked" "$CURRENT_RUNNER" "recursive_control_runner" "non-recursive project runner" "set a business runner with tools/context/project/set_project_runner.py, or pass --allow-governor-runner for an explicit audit run"
+      exit 3
+    fi
+    ;;
+esac
+
 if [ -z "$CURRENT_RUNNER" ] || [ ! -f "$CURRENT_RUNNER_ABS" ]; then
   echo "current runner missing: ${CURRENT_RUNNER:-<empty>}"
   "$PYTHON" tools/context/query_index.py --root "$ROOT" --index runner --project-id "$PROJECT_ID" --limit 20 || true
   write_gap "current_runner_missing" "${CURRENT_RUNNER:-<empty>}" "missing" "runner exists" "choose a valid runner from RUNNER_INDEX_VIEW.csv"
   exit 2
 fi
-
-case "$CURRENT_RUNNER" in
-  tools/context/run_context_governor_all.sh|tools/context/run_context_control_all.sh|tools/context/start_project.sh|tools/context/continue_project.sh)
-    if [ "$ALLOW_GOVERNOR_RUNNER" -ne 1 ]; then
-      echo "recursive governor runner blocked: $CURRENT_RUNNER"
-      write_gap "recursive_governor_runner_blocked" "$CURRENT_RUNNER" "recursive_control_runner" "non-recursive project runner" "set current_runner to a project runner, or pass --allow-governor-runner for an explicit audit run"
-      exit 3
-    fi
-    ;;
-esac
 
 case "$CURRENT_RUNNER_ABS" in
   *.py)
@@ -137,13 +140,13 @@ fi
 "$PYTHON" tools/context/update_task_state.py --root "$ROOT"
 "$PYTHON" tools/context/build_index_views.py --root "$ROOT" --project-id "$PROJECT_ID"
 "$PYTHON" tools/context/build_startup_bundle.py --root "$ROOT" --project-id "$PROJECT_ID"
-"$PYTHON" tools/context/startup_budget_test.py --root "$ROOT"
+"$PYTHON" tools/context/startup_budget_test.py --root "$ROOT" --project-id "$PROJECT_ID"
 
 "$PYTHON" - "$ROOT" "$PROJECT_ID" <<'PY'
 import sys
 from pathlib import Path
 
-root = Path(sys.argv[1])
+root = Path(sys.argv[1]).resolve()
 project_id = sys.argv[2]
 sys.path.insert(0, str(root / "tools/context"))
 from governor_common import get_project, project_control_path

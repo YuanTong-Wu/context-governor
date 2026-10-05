@@ -30,8 +30,8 @@ done
 ROOT="$(cd "$ROOT" && pwd)"
 PYTHON="${PYTHON:-python3}"
 PROJECT_ID="${PROJECT_ID:-default}"
-PROJECT_NAME="${PROJECT_NAME:-Default Project}"
-PROJECT_ROOT="${PROJECT_ROOT:-$ROOT}"
+PROJECT_NAME="${PROJECT_NAME:-}"
+PROJECT_ROOT="${PROJECT_ROOT:-}"
 STEP_TIMEOUT="${CONTEXT_GOVERNOR_STEP_TIMEOUT:-${GOVERNOR_STEP_TIMEOUT:-120}}"
 
 cd "$ROOT" || exit 1
@@ -156,16 +156,23 @@ PY
   fi
 }
 
-run_step init_project "$PYTHON" tools/context/project/init_project_context.py --root "$ROOT" --project-id "$PROJECT_ID" --project-root "$PROJECT_ROOT" --project-name "$PROJECT_NAME" --activate
+# A registered project keeps its stored root and name unless they are given here.
+INIT_ARGS=(--root "$ROOT" --project-id "$PROJECT_ID" --activate)
+if [ -n "$PROJECT_ROOT" ]; then
+  INIT_ARGS+=(--project-root "$PROJECT_ROOT")
+fi
+if [ -n "$PROJECT_NAME" ]; then
+  INIT_ARGS+=(--project-name "$PROJECT_NAME")
+fi
+run_step init_project "$PYTHON" tools/context/project/init_project_context.py "${INIT_ARGS[@]}"
 run_step build_file_index "$PYTHON" tools/context/build_file_index.py --root "$ROOT" --project-id "$PROJECT_ID"
 run_step build_runner_index "$PYTHON" tools/context/build_runner_index.py --root "$ROOT" --project-id "$PROJECT_ID"
 run_step build_case_index "$PYTHON" tools/context/build_case_index.py --root "$ROOT" --project-id "$PROJECT_ID"
 run_step build_evidence_index "$PYTHON" tools/context/build_evidence_index.py --root "$ROOT" --project-id "$PROJECT_ID"
 run_step build_gap_index "$PYTHON" tools/context/build_gap_index.py --root "$ROOT" --project-id "$PROJECT_ID"
 run_step build_index_views "$PYTHON" tools/context/build_index_views.py --root "$ROOT" --project-id "$PROJECT_ID"
-if [ "$PROJECT_ID" = "default" ]; then
-  run_step build_boot "$PYTHON" tools/context/build_boot_context.py --root "$ROOT"
-fi
+# BOOT.md belongs to the workspace and names the active project, so it is rebuilt for every project.
+run_step build_boot "$PYTHON" tools/context/build_boot_context.py --root "$ROOT"
 if [ ! -f context/TASK_STATE.json ]; then
   # Fresh workspace: write a first task state so the integrity audit has its pointers.
   run_step bootstrap_task_state "$PYTHON" tools/context/update_task_state.py --root "$ROOT"
@@ -173,11 +180,9 @@ fi
 run_step integrity_check "$PYTHON" tools/context/context_integrity_check.py --root "$ROOT"
 run_step update_task_state "$PYTHON" tools/context/update_task_state.py --root "$ROOT"
 run_step rebuild_index_views "$PYTHON" tools/context/build_index_views.py --root "$ROOT" --project-id "$PROJECT_ID"
-if [ "$PROJECT_ID" = "default" ]; then
-  run_step rebuild_boot "$PYTHON" tools/context/build_boot_context.py --root "$ROOT"
-fi
+run_step rebuild_boot "$PYTHON" tools/context/build_boot_context.py --root "$ROOT"
 run_step build_startup_bundle "$PYTHON" tools/context/build_startup_bundle.py --root "$ROOT" --project-id "$PROJECT_ID"
-run_step startup_budget "$PYTHON" tools/context/startup_budget_test.py --root "$ROOT"
+run_step startup_budget "$PYTHON" tools/context/startup_budget_test.py --root "$ROOT" --project-id "$PROJECT_ID"
 run_step recursive_entry_detector "$PYTHON" tools/context/recursive_entry_detector.py --root "$ROOT"
 run_step dev_checks bash tools/dev/run_dev_checks.sh --root "$ROOT"
 

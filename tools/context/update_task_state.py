@@ -23,7 +23,21 @@ from context_common import (
 )
 
 
+def configured_runner(root: Path) -> str:
+    """Business runner of the root project, set with tools/context/project/set_project_runner.py."""
+    registry = read_json(root / "context/global/PROJECT_REGISTRY.json", {})
+    projects = registry.get("projects", {}) if isinstance(registry, dict) else {}
+    project = projects.get("default", {}) if isinstance(projects, dict) else {}
+    return str(project.get("business_runner") or "").strip() if isinstance(project, dict) else ""
+
+
 def indexed_runner(root: Path) -> str:
+    """The runner written to TASK_STATE: the configured business runner, else the governor runner."""
+    configured = configured_runner(root)
+    if configured:
+        # Kept even when the file is gone, so the integrity check and
+        # continue_project.sh report it instead of silently switching runner.
+        return configured
     rows = read_csv(root / "context/indexes/RUNNER_INDEX.csv")
     paths = {row.get("path", "") for row in rows}
     for preferred in [
@@ -53,9 +67,11 @@ def update_state(root: Path) -> dict[str, str]:
         "context_integrity_status": verdict,
         "current_runner": indexed_runner(root),
         "current_runner_args": [],
-        "next_allowed_action": "Use BOOT.md plus the active project startup bundle; rerun tools/context/run_context_governor_all.sh after context edits."
-        if not hard_blocker
-        else "Run tools/context/context_repair.py before using BOOT.md as startup context.",
+        "next_allowed_action": "Run tools/context/context_repair.py before using BOOT.md as startup context."
+        if hard_blocker
+        else "Run tools/context/continue_project.sh default to run the business runner; rerun tools/context/run_context_governor_all.sh after context edits."
+        if configured_runner(root)
+        else "Use BOOT.md plus the active project startup bundle; rerun tools/context/run_context_governor_all.sh after context edits.",
         "latest_gap_queue_path": str(CONTROL_DIR_REL / "gap_queue.csv"),
         "latest_manifest_path": str(GENERATED_DIR_REL / "BOOT_BUILD_MANIFEST.csv"),
         "source_manifest_path": str(GENERATED_DIR_REL / "BOOT_SOURCE_MANIFEST.csv"),

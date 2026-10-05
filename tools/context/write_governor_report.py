@@ -113,7 +113,8 @@ def collect_checks(root: Path, project_id_arg: str | None = None) -> tuple[list[
     add("boot_line_budget", boot.exists() and line_count(boot) <= budget["boot_max_lines"], "HIGH", line_count(boot), f"<= {budget['boot_max_lines']}", "BOOT.md")
     add("boot_char_budget", boot.exists() and char_count(boot) <= budget["boot_max_chars"], "HIGH", char_count(boot), f"<= {budget['boot_max_chars']}", "BOOT.md")
     add("startup_bundle_exists", bundle.exists(), "HIGH", "exists" if bundle.exists() else "missing", "exists", relpath(root, bundle))
-    add("startup_budget_pass", startup.get("verdict") in {"STARTUP_BUDGET_PASS", "STARTUP_BUDGET_PASS_WITH_WARNINGS"}, "HIGH", startup.get("verdict", "missing"), "STARTUP_BUDGET_PASS", relpath(root, root / GOVERNOR_AUDIT_DIR_REL / "startup_budget_verdict.json"))
+    startup_ok = startup.get("verdict") in {"STARTUP_BUDGET_PASS", "STARTUP_BUDGET_PASS_WITH_WARNINGS"} and startup.get("project_id", project_id) == project_id
+    add("startup_budget_pass", startup_ok, "HIGH", f"{startup.get('verdict', 'missing')} ({startup.get('project_id', '')})", f"STARTUP_BUDGET_PASS ({project_id})", relpath(root, root / GOVERNOR_AUDIT_DIR_REL / "startup_budget_verdict.json"))
 
     for view_name in required_views:
         path = views_dir / view_name
@@ -219,14 +220,14 @@ def write_report(root: Path, project_id_arg: str | None = None) -> dict[str, Any
             "",
             "1. Open `var/context_governor_2026_06_24/audit/governor_final_checks.csv`.",
             "2. Fix the first HIGH failure.",
-            "3. Rerun `tools/context/run_context_governor_all.sh --root <project-root>`.",
+            f"3. Rerun `tools/context/run_context_governor_all.sh --root <workspace> --project-id {project_id}`.",
             "",
         ]
     else:
         next_lines = [
             "# Next Actions",
             "",
-            "1. Use `tools/context/start_project.sh default` to refresh the short startup bundle.",
+            f"1. Use `tools/context/start_project.sh {project_id}` to refresh the short startup bundle.",
             "2. Use `tools/context/query_index.py` for full-index lookups instead of opening full CSVs at startup.",
             "3. Use `tools/context/read_gate/read_context_file.py` for large files, raw evidence, and audit-sensitive files.",
             "",
@@ -250,7 +251,7 @@ def write_report(root: Path, project_id_arg: str | None = None) -> dict[str, Any
         "## What Changed",
         "",
         "- Added a global project registry and active-project pointer under `context/global`.",
-        "- Added project-local context records under `context/projects/default`.",
+        f"- Added project-local context records under `context/projects/{project_id}`.",
         "- Added startup bundles generated from a small read set.",
         "- Added small index views and shards; full indexes are query-only through `tools/context/query_index.py`.",
         "- Added read gates for large files, raw evidence pointers, gap/case context, and index views.",
@@ -259,17 +260,17 @@ def write_report(root: Path, project_id_arg: str | None = None) -> dict[str, Any
         "## Context Size Control",
         "",
         "- `BOOT.md` stays under the configured startup budget and points to the active project instead of carrying project history.",
-        "- Startup reads use `context/generated/startup_bundles/default_STARTUP_BUNDLE.md` plus bounded index views.",
+        f"- Startup reads use `{relpath(root, bundle)}` plus bounded index views.",
         "- Full indexes remain available through filtered queries, but they are not part of the startup bundle.",
         "- Large/raw/holdout-like files are protected by the read gate and audit logs.",
         "",
         "## Required Commands",
         "",
-        "- Start: `tools/context/start_project.sh default`",
-        "- Continue: `tools/context/continue_project.sh default`",
+        f"- Start: `tools/context/start_project.sh {project_id}`",
+        f"- Continue: `tools/context/continue_project.sh {project_id}` (runs the business runner set with `tools/context/project/set_project_runner.py`)",
         "- Query full indexes: `python3 tools/context/query_index.py --index file --path-contains tools/context --limit 20`",
         "- Safe large-file read: `python3 tools/context/read_gate/read_context_file.py <path> --reason <why> --max-chars 12000`",
-        "- Full governor verification: `tools/context/run_context_governor_all.sh --root <project-root>`",
+        f"- Full governor verification: `tools/context/run_context_governor_all.sh --root <workspace> --project-id {project_id}`",
         "",
         "## Failures",
         "",

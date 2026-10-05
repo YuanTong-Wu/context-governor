@@ -16,16 +16,22 @@ if str(SCRIPT_DIR) not in sys.path:
 from context_common import char_count, line_count, read_csv, read_json, relpath, utc_now, write_csv, write_json
 from governor_common import (
     GOVERNOR_AUDIT_DIR_REL,
+    INDEX_NAMES,
     append_governor_blocked,
     ensure_default_registry,
     ensure_governor_dirs,
-    get_active_project,
+    get_project,
     load_budget,
+    load_registry,
     project_abs_path,
+    project_index_path,
+    project_views_dir,
 )
 
 
 CHECK_FIELDS = ["check_id", "status", "severity", "path", "observed", "expected", "notes"]
+# Full indexes of the root project. Every registered project's full indexes are
+# checked too (see full_index_paths); these stay as a fallback.
 FULL_INDEX_PATHS = [
     "context/indexes/FILE_INDEX.csv",
     "context/indexes/RUNNER_INDEX.csv",
@@ -33,10 +39,11 @@ FULL_INDEX_PATHS = [
     "context/indexes/EVIDENCE_INDEX.csv",
     "context/indexes/GAP_INDEX.csv",
 ]
-VIEW_PATHS = [
-    "context/indexes/views/FILE_INDEX_VIEW.csv",
-    "context/indexes/views/RUNNER_INDEX_VIEW.csv",
-    "context/indexes/views/GAP_INDEX_VIEW.csv",
+# Views the startup bundle must point to, inside the checked project's views directory.
+STARTUP_VIEW_NAMES = [
+    "FILE_INDEX_VIEW.csv",
+    "RUNNER_INDEX_VIEW.csv",
+    "GAP_INDEX_VIEW.csv",
 ]
 RAW_PATTERNS = [
     re.compile(r"\.source_cache/"),
@@ -80,12 +87,38 @@ def classify(checks: list[dict[str, str]]) -> str:
     return "STARTUP_BUDGET_FAIL_UNKNOWN"
 
 
-def run(root: Path) -> dict[str, Any]:
+def full_index_paths(root: Path, project: dict[str, Any]) -> list[tuple[str, str]]:
+    """(check_id, path) for every full index a startup bundle must not name.
+
+    The checked project's own indexes keep the plain check ids; indexes of the
+    other registered projects carry the project id as a suffix.
+    """
+    registry = load_registry(root)
+    project_id = str(project["project_id"])
+    others = [item for pid, item in sorted(registry.get("projects", {}).items()) if pid != project_id]
+    seen: set[str] = set()
+    paths: list[tuple[str, str]] = []
+    for item in [project, *others]:
+        suffix = "" if item is project else f"_{item.get('project_id', '')}"
+        for name in INDEX_NAMES:
+            rel = relpath(root, project_index_path(root, item, name))
+            if rel not in seen:
+                seen.add(rel)
+                paths.append((f"no_full_index_{name}_index{suffix}", rel))
+    for rel in FULL_INDEX_PATHS:
+        if rel not in seen:
+            seen.add(rel)
+            paths.append((f"no_full_index_{Path(rel).stem.lower()}_default", rel))
+    return paths
+
+
+def run(root: Path, project_id: str | None = None) -> dict[str, Any]:
     ensure_governor_dirs(root)
     ensure_default_registry(root)
-    project = get_active_project(root)
+    project = get_project(root, project_id)
     budget = load_budget(root, project)
     project_id = project["project_id"]
+    views_dir = project_views_dir(root, project)
     bundle = root / f"context/generated/startup_bundles/{project_id}_STARTUP_BUNDLE.md"
     manifest = root / f"context/generated/startup_bundles/{project_id}_STARTUP_BUNDLE_MANIFEST.csv"
     boot = project_abs_path(root, project, project["boot_path"])
@@ -102,15 +135,16 @@ def run(root: Path) -> dict[str, Any]:
     add(checks, "startup_bundle_chars", bundle.exists() and len(text) <= budget["startup_bundle_max_chars"], "HIGH", relpath(root, bundle), len(text), f"<= {budget['startup_bundle_max_chars']}")
     add(checks, "startup_bundle_files", len(manifest_rows) <= budget["startup_bundle_max_files"], "HIGH", relpath(root, manifest), len(manifest_rows), f"<= {budget['startup_bundle_max_files']}")
 
-    for full_path in FULL_INDEX_PATHS:
+    for check_id, full_path in full_index_paths(root, project):
         in_manifest = any(row.get("path") == full_path for row in manifest_rows)
         in_text = full_path in text
-        add(checks, f"no_full_index_{Path(full_path).stem.lower()}", not in_manifest and not in_text, "HIGH", relpath(root, bundle), "present" if in_manifest or in_text else "absent", "absent")
+        add(checks, check_id, not in_manifest and not in_text, "HIGH", relpath(root, bundle), "present" if in_manifest or in_text else "absent", "absent", full_path)
 
-    for view_path in VIEW_PATHS:
-        add(checks, f"view_used_{Path(view_path).stem.lower()}", view_path in text, "HIGH", relpath(root, bundle), "present" if view_path in text else "absent", "present")
+    for view_name in STARTUP_VIEW_NAMES:
+        view_path = relpath(root, views_dir / view_name)
+        add(checks, f"view_used_{Path(view_name).stem.lower()}", view_path in text, "HIGH", relpath(root, bundle), "present" if view_path in text else "absent", "present", view_path)
 
-    for view_path in sorted((root / "context/indexes/views").glob("*_VIEW.csv")):
+    for view_path in sorted(views_dir.glob("*_VIEW.csv")):
         rows = read_csv(view_path)
         add(checks, f"view_rows_{view_path.stem.lower()}", len(rows) <= budget["index_view_max_rows"], "HIGH", relpath(root, view_path), len(rows), f"<= {budget['index_view_max_rows']}")
         add(checks, f"view_chars_{view_path.stem.lower()}", char_count(view_path) <= budget["index_view_max_chars"], "MEDIUM", relpath(root, view_path), char_count(view_path), f"<= {budget['index_view_max_chars']}")
@@ -160,8 +194,9 @@ def run(root: Path) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", default=str(Path(__file__).resolve().parents[2]))
+    parser.add_argument("--project-id", default=None, help="project to check; defaults to the active project")
     args = parser.parse_args()
-    result = run(Path(args.root).expanduser().resolve())
+    result = run(Path(args.root).expanduser().resolve(), args.project_id)
     print(f"startup budget verdict: {result['verdict']}")
     return 0 if result["verdict"] in {"STARTUP_BUDGET_PASS", "STARTUP_BUDGET_PASS_WITH_WARNINGS"} else 2
 

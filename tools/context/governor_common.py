@@ -53,6 +53,7 @@ PROJECT_FIELDS = [
     "invariants_path",
     "read_policy_path",
     "startup_bundle_path",
+    "business_runner",
     "status",
     "active_status",
     "authority_profile",
@@ -88,6 +89,17 @@ GOVERNOR_BLOCKED_FIELDS = [
     "next_action",
     "notes",
 ]
+
+# Scripts that govern the workspace. They live in the workspace, never in a
+# project root, and continue_project.sh refuses to run them as a project's runner.
+GOVERNOR_RUNNER = "tools/context/run_context_governor_all.sh"
+GOVERNANCE_RUNNERS = (
+    GOVERNOR_RUNNER,
+    "tools/context/run_context_control_all.sh",
+    "tools/context/start_project.sh",
+    "tools/context/continue_project.sh",
+)
+INDEX_NAMES = ("file", "runner", "case", "evidence", "gap")
 
 DEFAULT_BUDGET: dict[str, int] = {
     "boot_max_lines": 80,
@@ -347,6 +359,18 @@ def project_control_path(root: Path, project: dict[str, Any], rel_or_abs: str | 
     if path.is_absolute():
         return path
     return (root / path).resolve()
+
+
+def business_runner(project: dict[str, Any]) -> str:
+    """The project's business runner set with set_project_runner.py, or ""."""
+    return str(project.get("business_runner") or "").strip()
+
+
+def resolve_runner_path(root: Path, project: dict[str, Any], runner: str) -> Path:
+    """Governance runners resolve in the workspace, business runners in the project root."""
+    if runner in GOVERNANCE_RUNNERS:
+        return (root / runner).resolve()
+    return project_abs_path(root, project, runner)
 
 
 def project_scan_root(root: Path, project: dict[str, Any]) -> Path:

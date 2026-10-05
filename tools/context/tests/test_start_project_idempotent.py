@@ -4,6 +4,17 @@ from pathlib import Path
 from test_common import assert_true, run_cmd
 
 
+# start_project.sh activates the project it starts; put the caller's active project back.
+GLOBAL_FILES = [
+    Path("context/global/PROJECT_REGISTRY.json"),
+    Path("context/global/ACTIVE_PROJECT.json"),
+    Path("context/global/PROJECTS.csv"),
+    Path("var/context_governor_2026_06_24/audit/startup_budget_check.csv"),
+    Path("var/context_governor_2026_06_24/audit/startup_budget_summary.json"),
+    Path("var/context_governor_2026_06_24/audit/startup_budget_verdict.json"),
+]
+
+
 def bundle_from_stdout(stdout: str) -> str:
     for line in stdout.splitlines():
         if line.startswith("STARTUP_BUNDLE="):
@@ -13,14 +24,20 @@ def bundle_from_stdout(stdout: str) -> str:
 
 def main() -> int:
     root = Path(__file__).resolve().parents[3]
+    backups = {rel: (root / rel).read_bytes() if (root / rel).exists() else None for rel in GLOBAL_FILES}
     outputs = []
-    for _ in range(2):
-        result = run_cmd(
-            ["bash", "tools/context/start_project.sh", "default", "--root", str(root)],
-            root,
-            timeout=180,
-        )
-        outputs.append(result.stdout)
+    try:
+        for _ in range(2):
+            result = run_cmd(
+                ["bash", "tools/context/start_project.sh", "default", "--root", str(root)],
+                root,
+                timeout=180,
+            )
+            outputs.append(result.stdout)
+    finally:
+        for rel, data in backups.items():
+            if data is not None:
+                (root / rel).write_bytes(data)
 
     for stdout in outputs:
         assert_true("PROJECT_ID=default" in stdout, "start_project should print project id")

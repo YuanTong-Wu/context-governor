@@ -161,12 +161,10 @@ def latest_verdict(root: Path) -> dict[str, Any]:
 
 
 def startup_budget_verdict(root: Path, project_id: str) -> str:
-    summary = read_json(root / "var/context_governor_2026_06_24/audit/startup_budget_summary.json", None)
-    if isinstance(summary, dict) and summary.get("verdict"):
-        return str(summary["verdict"])
-    audit = read_json(root / f"context/generated/startup_bundles/{project_id}_STARTUP_BUDGET_AUDIT.json", None)
-    if isinstance(audit, dict) and audit.get("bundle_chars") is not None:
-        return "STARTUP_BUDGET_PASS"
+    """Latest startup budget verdict for this project, or UNKNOWN when it was last run for another one."""
+    verdict = read_json(root / "var/context_governor_2026_06_24/audit/startup_budget_verdict.json", None)
+    if isinstance(verdict, dict) and verdict.get("verdict") and verdict.get("project_id", project_id) == project_id:
+        return str(verdict["verdict"])
     return "UNKNOWN"
 
 
@@ -194,7 +192,7 @@ def next_suggestion(state: dict[str, Any], verdict: dict[str, Any]) -> str:
     if verdict.get("hard_blocker"):
         return "先运行 `python tools/keeper/keeper.py report` 查看报告，再按报告修复。"
     if runner in GOVERNOR_RUNNERS:
-        return "上下文系统已经健康，当前没有业务 runner。需要继续业务时，请先设置下一步业务 runner。"
+        return "上下文系统已经健康，当前没有业务 runner。需要继续业务时，先用 `python3 tools/context/project/set_project_runner.py tools/<你的 runner>.sh` 设置业务 runner。"
     if runner:
         return "可以运行 `python tools/keeper/keeper.py continue` 执行当前业务 runner。"
     return str(state.get("next_allowed_action") or "运行 `python tools/keeper/keeper.py open` 初始化项目。")
@@ -343,11 +341,13 @@ def command_continue(root: Path, args: argparse.Namespace) -> int:
     runner = str(status.get("current_runner") or "")
     if runner in GOVERNOR_RUNNERS:
         write_keeper_outputs(root, "continue", status, "CONTEXT_KEEPER_NO_BUSINESS_RUNNER")
-        print("上下文系统已经健康，当前没有业务 runner。请运行 next 查看下一步。")
+        print("上下文系统已经健康，当前没有业务 runner。")
+        print("设置方法：python3 tools/context/project/set_project_runner.py tools/<你的 runner>.sh")
         return 0
     if not runner:
         write_keeper_outputs(root, "continue", status, "CONTEXT_KEEPER_NO_BUSINESS_RUNNER")
-        print("当前没有业务 runner。请运行 next 查看下一步。")
+        print("当前没有业务 runner。")
+        print("设置方法：python3 tools/context/project/set_project_runner.py tools/<你的 runner>.sh")
         return 0
     proc = run(root, ["bash", "tools/context/continue_project.sh", status["project_id"], "--root", str(root)], timeout=300)
     refreshed = collect_status(root, args.project_id)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """End-to-end tests for Context Governor and Keeper.
 
-Each run builds a fresh demo workspace in a temporary directory with
+Each test class builds a fresh demo workspace in a temporary directory with
 scripts/make_workspace.sh and runs every check inside it, so this repository is
 never written to. Run from the repository root:
 
@@ -160,6 +160,153 @@ class WorkspaceTests(unittest.TestCase):
     def test_11_markdown_budget_check(self) -> None:
         proc = self.py("tools/context_budget_check.py", "--root", str(self.ws), "--top", "5")
         self.assertIn("Startup pack status: `OK`", proc.stdout)
+
+
+RUNNER_SCRIPT = """#!/usr/bin/env bash
+set -euo pipefail
+ROOT=.
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --root) ROOT="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+mkdir -p "$ROOT/var/runner_markers"
+echo ran > "$ROOT/var/runner_markers/{name}.txt"
+echo "{name} runner ran"
+"""
+
+
+class MultiProjectTests(unittest.TestCase):
+    """A second project rooted outside the workspace, and business runners."""
+
+    tmp: str
+    ws: Path
+    ext: Path
+    env: dict[str, str]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tmp = tempfile.mkdtemp(prefix="context-governor-multi-")
+        cls.ws = Path(cls.tmp) / "workspace"
+        cls.ext = (Path(cls.tmp) / "external_project").resolve()
+        cls.env = dict(os.environ, PYTHON=sys.executable, PYTHONDONTWRITEBYTECODE="1")
+        made = run(["bash", str(REPO / "scripts/make_workspace.sh"), str(cls.ws)], REPO, cls.env)
+        if made.returncode != 0:
+            raise RuntimeError("make_workspace.sh failed\n" + describe(made))
+        governor = run(["bash", "tools/context/run_context_governor_all.sh", "--root", str(cls.ws)], cls.ws, cls.env)
+        if governor.returncode != 0:
+            raise RuntimeError("governor run failed\n" + describe(governor))
+        (cls.ext / "tools").mkdir(parents=True)
+        (cls.ext / "README.md").write_text("# External project\n", encoding="utf-8")
+        (cls.ext / "tools/run_main.sh").write_text(RUNNER_SCRIPT.format(name="external"), encoding="utf-8")
+        (cls.ws / "tools/jobs").mkdir(parents=True)
+        (cls.ws / "tools/jobs/daily.sh").write_text(RUNNER_SCRIPT.format(name="daily"), encoding="utf-8")
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if os.environ.get("KEEP_WORKSPACE"):
+            print(f"\nworkspace kept at {cls.ws}", file=sys.stderr)
+        else:
+            shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def sh(self, *args: str, expect: int | None = 0) -> subprocess.CompletedProcess[str]:
+        proc = run(["bash", *args], self.ws, self.env)
+        if expect is not None:
+            self.assertEqual(proc.returncode, expect, describe(proc))
+        return proc
+
+    def py(self, *args: str, expect: int | None = 0) -> subprocess.CompletedProcess[str]:
+        proc = run([sys.executable, *args], self.ws, self.env)
+        if expect is not None:
+            self.assertEqual(proc.returncode, expect, describe(proc))
+        return proc
+
+    def budget_verdict(self) -> dict:
+        return read_json(self.ws / "var/context_governor_2026_06_24/audit/startup_budget_verdict.json")
+
+    def state(self, rel: str) -> dict:
+        return read_json(self.ws / rel)
+
+    def test_01_external_project_starts_within_budget(self) -> None:
+        self.py("tools/context/project/init_project_context.py", "--root", str(self.ws), "--project-id", "my_project",
+                "--project-name", "My Project", "--project-root", str(self.ext), "--activate")
+        # No --project-root or --project-name: the registration must be kept.
+        proc = self.sh("tools/context/start_project.sh", "my_project", "--root", str(self.ws))
+        self.assertIn("PROJECT_ID=my_project", proc.stdout)
+        self.assertIn("STARTUP_BUNDLE=context/generated/startup_bundles/my_project_STARTUP_BUNDLE.md", proc.stdout)
+        self.assertIn("NEXT_ACTION=", proc.stdout)
+        self.assertEqual(self.budget_verdict()["verdict"], "STARTUP_BUDGET_PASS")
+        self.assertEqual(self.budget_verdict()["project_id"], "my_project")
+        project = read_json(self.ws / "context/global/PROJECT_REGISTRY.json")["projects"]["my_project"]
+        self.assertEqual(project["project_root"], str(self.ext))
+        self.assertEqual(project["project_name"], "My Project")
+        bundle = (self.ws / "context/generated/startup_bundles/my_project_STARTUP_BUNDLE.md").read_text(encoding="utf-8")
+        self.assertIn("context/projects/my_project/indexes/views/FILE_INDEX_VIEW.csv", bundle)
+        for name in ["FILE_INDEX.csv", "RUNNER_INDEX.csv", "CASE_INDEX.csv", "EVIDENCE_INDEX.csv", "GAP_INDEX.csv"]:
+            self.assertNotIn(f"context/projects/my_project/indexes/{name}", bundle)
+            self.assertNotIn(f"context/indexes/{name}", bundle)
+
+    def test_02_full_index_leak_blocks_for_external_project(self) -> None:
+        bundle = self.ws / "context/generated/startup_bundles/my_project_STARTUP_BUNDLE.md"
+        original = bundle.read_text(encoding="utf-8")
+        check = ("tools/context/startup_budget_test.py", "--root", str(self.ws), "--project-id", "my_project")
+        try:
+            for leaked in ["context/projects/my_project/indexes/GAP_INDEX.csv", "context/indexes/FILE_INDEX.csv"]:
+                with self.subTest(leaked=leaked):
+                    bundle.write_text(original + f"\n- `{leaked}`\n", encoding="utf-8")
+                    self.py(*check, expect=2)
+                    self.assertEqual(self.budget_verdict()["verdict"], "STARTUP_BUDGET_FAIL_FULL_INDEX_INCLUDED")
+        finally:
+            bundle.write_text(original, encoding="utf-8")
+        self.py(*check)
+        self.assertEqual(self.budget_verdict()["verdict"], "STARTUP_BUDGET_PASS")
+
+    def test_03_continue_refuses_until_a_business_runner_is_set(self) -> None:
+        proc = self.sh("tools/context/continue_project.sh", "my_project", "--root", str(self.ws), expect=3)
+        self.assertIn("recursive governor runner blocked", proc.stdout)
+        self.assertIn("set_project_runner.py", proc.stdout)
+
+    def test_04_set_runner_rejects_non_business_paths(self) -> None:
+        setter = "tools/context/project/set_project_runner.py"
+        for bad in ["tools/context/run_context_governor_all.sh", "tools/missing.sh", "README.md"]:
+            with self.subTest(runner=bad):
+                proc = self.py(setter, "--root", str(self.ws), "--project-id", "my_project", bad, expect=2)
+                self.assertIn("business runner not set", proc.stderr)
+
+    def test_05_business_runner_runs_and_is_kept(self) -> None:
+        self.py("tools/context/project/set_project_runner.py", "--root", str(self.ws), "--project-id", "my_project", "tools/run_main.sh")
+        proc = self.sh("tools/context/continue_project.sh", "my_project", "--root", str(self.ws))
+        self.assertIn("external runner ran", proc.stdout)
+        self.assertIn("RUNNER_EXIT_CODE=0", proc.stdout)
+        self.assertTrue((self.ws / "var/runner_markers/external.txt").exists())
+        self.assertEqual(self.state("context/projects/my_project/TASK_STATE.json")["current_runner"], "tools/run_main.sh")
+        self.sh("tools/context/start_project.sh", "my_project", "--root", str(self.ws))
+        self.assertEqual(self.state("context/projects/my_project/TASK_STATE.json")["current_runner"], "tools/run_main.sh")
+
+    def test_06_governor_verifies_external_project(self) -> None:
+        proc = self.sh("tools/context/run_context_governor_all.sh", "--root", str(self.ws), "--project-id", "my_project")
+        verdict = read_json(self.ws / GOVERNOR_VERDICT)
+        self.assertEqual(verdict["verdict"], "MULTI_PROJECT_CONTEXT_GOVERNOR_BUILT_AND_VERIFIED", describe(proc))
+        self.assertEqual(verdict["project_id"], "my_project")
+        self.assertEqual(read_json(self.ws / "context/global/ACTIVE_PROJECT.json")["active_project_id"], "my_project")
+        tests = read_json(self.ws / "var/context_governor_2026_06_24/audit/context_tests_summary.json")
+        self.assertEqual((tests["tests"], tests["failures"]), (16, 0))
+
+    def test_07_default_project_business_runner(self) -> None:
+        self.sh("tools/context/start_project.sh", "default", "--root", str(self.ws))
+        self.py("tools/context/project/set_project_runner.py", "--root", str(self.ws), "--project-id", "default", "tools/jobs/daily.sh")
+        keeper = run(["./管家", "继续"], self.ws, self.env)
+        self.assertEqual(keeper.returncode, 0, describe(keeper))
+        self.assertIn("当前业务 runner 已执行完成", keeper.stdout)
+        self.assertTrue((self.ws / "var/runner_markers/daily.txt").exists())
+        # continue_project.sh refreshed TASK_STATE afterwards; the runner must survive that and a governor run.
+        self.assertEqual(self.state("context/TASK_STATE.json")["current_runner"], "tools/jobs/daily.sh")
+        self.sh("tools/context/run_context_governor_all.sh", "--root", str(self.ws))
+        self.assertEqual(self.state("context/TASK_STATE.json")["current_runner"], "tools/jobs/daily.sh")
+        self.py("tools/context/project/set_project_runner.py", "--root", str(self.ws), "--project-id", "default", "--clear")
+        self.assertEqual(self.state("context/TASK_STATE.json")["current_runner"], "tools/context/run_context_governor_all.sh")
+        self.sh("tools/context/continue_project.sh", "default", "--root", str(self.ws), expect=3)
 
 
 if __name__ == "__main__":

@@ -56,7 +56,12 @@ python tools/keeper/keeper.py next
 python tools/keeper/keeper.py continue
 ```
 
-如果当前 runner 是 governor/control runner，keeper 会友好提示当前没有业务 runner，而不是写一堆递归阻塞。
+如果当前 runner 是 governor/control runner，keeper 会友好提示当前没有业务 runner，而不是写一堆递归阻塞。先设置业务 runner：
+
+```bash
+python3 tools/context/project/set_project_runner.py tools/jobs/run_daily.sh   # 当前项目
+python3 tools/context/project/set_project_runner.py --clear                  # 取消
+```
 
 ## 改动前检查
 

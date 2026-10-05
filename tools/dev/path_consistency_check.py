@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from dev_common import add_check, path_exists, read_json, resolve_root, root_arg, write_check_outputs
+from governor_common import resolve_runner_path
 
 
 def check_rel(checks: list[dict[str, str]], root: Path, check_id: str, rel: str, severity: str = "HIGH") -> None:
@@ -59,8 +60,27 @@ def main() -> int:
         check_rel(checks, root, f"project_{key}_exists", str(project.get(key, "")), severity)
 
     state = read_json(root / str(project.get("state_path", "context/TASK_STATE.json")), {})
-    for key in ["current_runner", "latest_gap_queue_path", "latest_verdict_path", "latest_summary_path"]:
-        check_rel(checks, root, f"task_{key}_exists", str(state.get(key, "")), "HIGH" if key != "latest_summary_path" else "MEDIUM")
+    # A business runner lives in the project root, which may be outside the workspace.
+    runner = str(state.get("current_runner", ""))
+    runner_ok = bool(runner) and bool(project) and resolve_runner_path(root, project, runner).is_file()
+    add_check(
+        checks,
+        "task_current_runner_exists",
+        "path",
+        "PASS" if runner_ok else "FAIL",
+        "HIGH",
+        runner or "task_current_runner_exists",
+        "exists" if runner_ok else "missing",
+        "existing path",
+    )
+    for key in ["latest_gap_queue_path", "latest_verdict_path"]:
+        check_rel(checks, root, f"task_{key}_exists", str(state.get(key, "")), "HIGH")
+    summary_rel = str(state.get("latest_summary_path", ""))
+    if summary_rel:
+        check_rel(checks, root, "task_latest_summary_path_exists", summary_rel, "MEDIUM")
+    else:
+        # Project-local task states (projects other than default) carry no summary pointer.
+        add_check(checks, "task_latest_summary_path_exists", "path", "WARN", "MEDIUM", "task_latest_summary_path_exists", "not set", "existing path")
 
     for rel in [
         "context/indexes/views/FILE_INDEX_VIEW.csv",

@@ -6,6 +6,11 @@ from __future__ import annotations
 from dev_common import add_check, read_json, resolve_root, root_arg, write_check_outputs
 
 
+# Phrases that must appear in SYSTEM_INVARIANTS.json "rules". A workspace can
+# replace this list with its own "required_rules".
+DEFAULT_REQUIRED_RULES = ["Holdout samples must remain locked", "Recursive entry files are forbidden"]
+
+
 def main() -> int:
     parser = root_arg()
     args = parser.parse_args()
@@ -26,7 +31,8 @@ def main() -> int:
         add_check(checks, f"forbidden_{action}", "invariant", "PASS" if action in forbidden else "FAIL", "HIGH", "context/TASK_STATE.json", "present" if action in forbidden else "missing", "present")
 
     rules = " ".join(str(item) for item in invariants.get("rules", []))
-    for phrase in ["Holdout samples must remain locked", "Recursive entry files are forbidden"]:
+    required = invariants.get("required_rules") or DEFAULT_REQUIRED_RULES
+    for phrase in [str(item) for item in required]:
         add_check(checks, "rule_" + phrase.lower().replace(" ", "_")[:48], "invariant", "PASS" if phrase in rules else "FAIL", "HIGH", "context/SYSTEM_INVARIANTS.json", "present" if phrase in rules else "missing", phrase)
 
     add_check(checks, "budget_startup_file_cap", "budget", "PASS" if int(budget.get("startup_bundle_max_files", 999)) <= 8 else "FAIL", "HIGH", "context/budgets/GLOBAL_CONTEXT_BUDGET.json", str(budget.get("startup_bundle_max_files", "")), "<=8")

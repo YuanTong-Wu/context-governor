@@ -1,0 +1,16 @@
+{
+  "allowed_paths": [
+    "BOOT.md",
+    "START_HERE_MEMORY.md",
+    "AGENTS.md",
+    "context/CONTEXT_RECURSION_BAN.md",
+    "context/RECURSIVE_ENTRY_ALLOWLIST.json",
+    "context/STARTUP_CONTEXT.md",
+    "context/generated/startup_bundles/*.md",
+    "context/projects/*/BOOT.md",
+    "docs/context/*.md",
+    "docs/dev/*.md",
+    "var/context_governor_2026_06_24/reports/*.md"
+  ],
+  "notes": "Allowed files may describe startup rules, but only BOOT.md and generated startup bundles are active startup pointers."
+}

@@ -245,7 +245,14 @@ def render_report(rows: list[MdFile], config: dict[str, Any], top: int) -> str:
 
 
 def main() -> int:
+    global ROOT, CONFIG_PATH
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=ROOT, help="Workspace to scan (default: the folder above tools/).")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="Budget config JSON (default: <root>/context/context_budget.json; built-in defaults if missing).",
+    )
     parser.add_argument("--report", type=Path, help="Write a Markdown report to this path.")
     parser.add_argument("--top", type=int, default=DEFAULT_TOP, help="Number of over-budget files to show.")
     parser.add_argument(
@@ -254,6 +261,8 @@ def main() -> int:
         help="Exit nonzero when any budget violation or startup-pack violation exists.",
     )
     args = parser.parse_args()
+    ROOT = args.root.expanduser().resolve()
+    CONFIG_PATH = args.config.expanduser().resolve() if args.config else ROOT / "context" / "context_budget.json"
 
     config = load_config()
     rows = collect(config)
@@ -263,7 +272,11 @@ def main() -> int:
         report_path = args.report if args.report.is_absolute() else ROOT / args.report
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(report, encoding="utf-8")
-        print(f"Wrote {report_path.relative_to(ROOT).as_posix()}")
+        try:
+            shown = report_path.resolve().relative_to(ROOT).as_posix()
+        except ValueError:
+            shown = str(report_path)
+        print(f"Wrote {shown}")
     else:
         print(report)
 

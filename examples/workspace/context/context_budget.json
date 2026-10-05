@@ -13,12 +13,9 @@
   },
   "startup_files": [
     "AGENTS.md",
-    "NORTH_STAR.md",
-    "README.md",
-    "context/STARTUP_CONTEXT.md",
-    "context/INDEX_ACTIVE.md",
-    "context/INDEX_DOMAINS.md",
-    "START_HERE_MEMORY.md"
+    "BOOT.md",
+    "context/CONTEXT_LOAD_POLICY.md",
+    "context/generated/startup_bundles/default_STARTUP_BUNDLE.md"
   ],
   "archive_prefixes": [
     "var/",

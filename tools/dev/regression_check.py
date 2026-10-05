@@ -25,6 +25,16 @@ def run_cmd(root, check_id: str, cmd: list[str], checks: list[dict[str, str]], s
     )
 
 
+def active_startup_bundle(root):
+    """Startup bundle of the active project, from the registry when present."""
+    active = read_json(root / "context/global/ACTIVE_PROJECT.json", {}) or {}
+    project_id = str(active.get("active_project_id") or "default")
+    registry = read_json(root / "context/global/PROJECT_REGISTRY.json", {}) or {}
+    project = (registry.get("projects") or {}).get(project_id) or {}
+    rel = project.get("startup_bundle_path") or f"context/generated/startup_bundles/{project_id}_STARTUP_BUNDLE.md"
+    return root / str(rel)
+
+
 def main() -> int:
     parser = root_arg()
     args = parser.parse_args()
@@ -34,7 +44,7 @@ def main() -> int:
     run_cmd(root, "context_integrity", ["python3", "tools/context/context_integrity_check.py", "--root", str(root)], checks)
     run_cmd(root, "recursive_entry_detector", ["python3", "tools/context/recursive_entry_detector.py", "--root", str(root)], checks)
 
-    bundle = root / "context/generated/startup_bundles/default_STARTUP_BUNDLE.md"
+    bundle = active_startup_bundle(root)
     if bundle.exists():
         run_cmd(root, "startup_budget", ["python3", "tools/context/startup_budget_test.py", "--root", str(root)], checks)
     else:

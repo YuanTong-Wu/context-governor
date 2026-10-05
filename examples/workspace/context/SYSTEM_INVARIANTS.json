@@ -1,0 +1,45 @@
+{
+  "invariants_version": "1.0",
+  "system_name": "Example workspace",
+  "boot_limits": {
+    "max_lines": 80,
+    "max_chars": 4000
+  },
+  "holdout_status_required": "LOCKED",
+  "rules": [
+    "BOOT.md is a generated pointer map and stays within its line and character budget.",
+    "Holdout samples must remain locked; agents may read their metadata only.",
+    "Recursive entry files are forbidden; update sources instead of adding another entry file.",
+    "No external side effects (payments, deployments, account changes) without explicit human approval.",
+    "Generated summaries never outrank their sources.",
+    "Raw evidence is read as a pointer unless an audit needs the content.",
+    "Later information must not leak into earlier recorded judgments."
+  ],
+  "required_rules": [
+    "Holdout samples must remain locked",
+    "Recursive entry files are forbidden"
+  ],
+  "boot_rule_keywords": [
+    "holdout",
+    "side effect",
+    "recursive",
+    "boot.md"
+  ],
+  "forbidden_claims": [
+    {
+      "id": "holdout_unlocked",
+      "pattern": "(?i)holdout\\s+(?:samples?\\s+)?(?:is|are)\\s+(?:now\\s+)?unlocked"
+    },
+    {
+      "id": "summary_outranks_source",
+      "pattern": "(?i)generated\\s+summar(?:y|ies)\\s+(?:can\\s+)?(?:outrank|override)s?\\s+(?:their\\s+|the\\s+)?sources?"
+    }
+  ],
+  "forbidden_actions": [
+    "external_side_effects",
+    "external_side_effect_interfaces",
+    "unlock_holdout_samples",
+    "recursive_entry_files",
+    "startup_full_index_reads"
+  ]
+}

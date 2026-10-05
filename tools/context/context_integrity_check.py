@@ -50,6 +50,26 @@ BAD_SEMANTIC_DRIFT = [
 ]
 
 
+def load_forbidden_claims(invariants: dict[str, Any]) -> tuple[list[tuple[str, re.Pattern[str]]], list[str]]:
+    """Read project-specific drift claims from SYSTEM_INVARIANTS.json.
+
+    Each entry of "forbidden_claims" is {"id": ..., "pattern": <regex>}. A claim
+    that matches BOOT.md is reported as semantic drift. Invalid entries are
+    returned as errors so the audit can fail on them.
+    """
+    claims: list[tuple[str, re.Pattern[str]]] = []
+    errors: list[str] = []
+    entries = invariants.get("forbidden_claims", []) if isinstance(invariants, dict) else []
+    for idx, entry in enumerate(entries if isinstance(entries, list) else []):
+        claim_id = str(entry.get("id") or f"claim_{idx}") if isinstance(entry, dict) else f"claim_{idx}"
+        pattern = entry.get("pattern") if isinstance(entry, dict) else None
+        try:
+            claims.append((f"claim_{claim_id}", re.compile(str(pattern))))
+        except (re.error, TypeError):
+            errors.append(claim_id)
+    return claims, errors
+
+
 def authority_number(row: dict[str, Any]) -> int:
     try:
         return int(str(row.get("authority_level", "0") or "0"))
@@ -206,7 +226,19 @@ def run_checks(root: Path) -> dict[str, Any]:
             match.group(0) if match else "absent",
             "absent",
         )
-    for check_id, pattern in BAD_SEMANTIC_DRIFT:
+    claims, claim_errors = load_forbidden_claims(invariants)
+    for claim_id in claim_errors:
+        add_check(
+            checks,
+            f"forbidden_claim_pattern_{claim_id}",
+            "schema",
+            "FAIL",
+            "HIGH",
+            "context/SYSTEM_INVARIANTS.json",
+            "invalid regex",
+            "valid forbidden_claims pattern",
+        )
+    for check_id, pattern in BAD_SEMANTIC_DRIFT + claims:
         match = pattern.search(boot_text)
         add_check(
             checks,

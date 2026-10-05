@@ -166,6 +166,10 @@ run_step build_index_views "$PYTHON" tools/context/build_index_views.py --root "
 if [ "$PROJECT_ID" = "default" ]; then
   run_step build_boot "$PYTHON" tools/context/build_boot_context.py --root "$ROOT"
 fi
+if [ ! -f context/TASK_STATE.json ]; then
+  # Fresh workspace: write a first task state so the integrity audit has its pointers.
+  run_step bootstrap_task_state "$PYTHON" tools/context/update_task_state.py --root "$ROOT"
+fi
 run_step integrity_check "$PYTHON" tools/context/context_integrity_check.py --root "$ROOT"
 run_step update_task_state "$PYTHON" tools/context/update_task_state.py --root "$ROOT"
 run_step rebuild_index_views "$PYTHON" tools/context/build_index_views.py --root "$ROOT" --project-id "$PROJECT_ID"

@@ -3,9 +3,8 @@
 默认不要直接打开大文件。使用读取闸门：
 
 ```bash
-python3 tools/context/read_gate/read_context_file.py \
+python3 tools/context/read_gate/read_context_file.py path/to/file.md \
   --root <workspace> \
-  --path path/to/file.md \
   --reason "active task requires this section" \
   --max-chars 12000
 ```

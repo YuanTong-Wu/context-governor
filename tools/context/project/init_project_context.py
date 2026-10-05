@@ -21,6 +21,7 @@ from governor_common import (
     load_registry,
     save_registry,
     set_active_project,
+    stored_project_root,
     write_default_budgets,
 )
 
@@ -93,7 +94,7 @@ def write_project_files(root: Path, project: dict, activate: bool) -> None:
     boot = (
         f"# {project['project_name']} BOOT\n\n"
         "- This is a project-local short pointer, not project history.\n"
-        "- Start with `tools/context/start_project.sh {project_id}`.\n"
+        f"- Start with `tools/context/start_project.sh {project_id}`.\n"
         f"- Startup bundle: `context/generated/startup_bundles/{project_id}_STARTUP_BUNDLE.md`.\n"
         "- Use index views and query scripts instead of full indexes.\n"
     )
@@ -132,7 +133,7 @@ def main() -> int:
         {
             "project_id": args.project_id,
             "project_name": args.project_name,
-            "project_root": str(Path(args.project_root).expanduser().resolve()),
+            "project_root": stored_project_root(root, args.project_root),
             "updated_at_utc": utc_now(),
         }
     )

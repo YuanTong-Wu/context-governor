@@ -38,10 +38,11 @@ Startup pack means:
 
 ## Verification
 
-Run:
+Run from the workspace root (or pass `--root <workspace>`). The config is read
+from `context/context_budget.json`; without it the built-in defaults apply.
 
 ```bash
-python3 tools/context_budget_check.py --report context/REPOSITORY_CONTEXT_AUDIT_2026-06-24.md
+python3 tools/context_budget_check.py --report var/context_budget/CONTEXT_BUDGET_REPORT.md
 ```
 
 For strict checks:

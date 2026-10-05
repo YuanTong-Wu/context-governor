@@ -1,0 +1,2 @@
+gap_id,phase,artifact_path,gap_type,severity,blocking_level,observed_status,expected_status,next_action,created_at_utc,notes
+example_gap_001,phase1,notes/design_notes.md,missing_owner,LOW,NON_BLOCKING,OPEN,owner recorded,Name an owner for the design notes,2026-01-01T00:00:00Z,example gap merged into GAP_INDEX.csv

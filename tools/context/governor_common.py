@@ -166,13 +166,39 @@ def append_governor_blocked(root: Path, row: dict[str, Any]) -> None:
     write_csv(path, GOVERNOR_BLOCKED_FIELDS, rows)
 
 
+def stored_project_root(root: Path, project_root: str | Path | None) -> str:
+    """Return project_root as stored in the registry.
+
+    A project inside the governed root is stored relative to it ("." for the
+    root itself), so registry files carry no absolute local paths. A project
+    outside the root keeps its absolute path.
+    """
+    path = Path(project_root).expanduser() if project_root else root
+    if not path.is_absolute():
+        path = root / path
+    path = path.resolve()
+    try:
+        rel = path.relative_to(root.resolve())
+    except ValueError:
+        return str(path)
+    return rel.as_posix() or "."
+
+
+def resolve_project_root(root: Path, project: dict[str, Any]) -> Path:
+    """Resolve a registry project_root; relative values are relative to root."""
+    path = Path(str(project.get("project_root") or ".")).expanduser()
+    if not path.is_absolute():
+        path = root / path
+    return path.resolve()
+
+
 def default_project_record(root: Path, project_id: str, project_name: str, project_root: str | Path | None = None) -> dict[str, Any]:
-    project_root_path = Path(project_root).expanduser().resolve() if project_root else root.resolve()
+    project_root_path = resolve_project_root(root, {"project_root": stored_project_root(root, project_root)})
     now = utc_now()
     return {
         "project_id": project_id,
         "project_name": project_name,
-        "project_root": str(project_root_path),
+        "project_root": stored_project_root(root, project_root),
         "boot_path": "BOOT.md" if project_root_path == root.resolve() else f"context/projects/{project_id}/BOOT.md",
         "state_path": "context/TASK_STATE.json" if project_id == "default" else f"context/projects/{project_id}/TASK_STATE.json",
         "verdict_path": "context/CURRENT_VERDICT.json" if project_id == "default" else f"context/projects/{project_id}/CURRENT_VERDICT.json",
@@ -312,7 +338,7 @@ def project_abs_path(root: Path, project: dict[str, Any], rel_or_abs: str | Path
     rel_text = str(path)
     if rel_text.startswith(("context/projects/", "context/generated/", "context/global/", "context/budgets/")):
         return (root / path).resolve()
-    project_root = Path(str(project.get("project_root") or root)).expanduser().resolve()
+    project_root = resolve_project_root(root, project)
     return (project_root / path).resolve()
 
 
@@ -324,7 +350,7 @@ def project_control_path(root: Path, project: dict[str, Any], rel_or_abs: str | 
 
 
 def project_scan_root(root: Path, project: dict[str, Any]) -> Path:
-    project_root = Path(str(project.get("project_root") or root)).expanduser().resolve()
+    project_root = resolve_project_root(root, project)
     return project_root if project_root.exists() else root.resolve()
 
 

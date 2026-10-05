@@ -62,20 +62,22 @@ def source_row(root: Path, rel: str, role: str, included: bool = True, notes: st
     }
 
 
+DEFAULT_BOOT_RULE_KEYWORDS = ["holdout", "side effect", "recursive", "boot.md"]
+
+
 def load_rule_subset(invariants: dict[str, Any]) -> list[str]:
+    """Pick the invariant rules that BOOT.md repeats.
+
+    SYSTEM_INVARIANTS.json may set "boot_rule_keywords"; a rule is kept when it
+    contains one of them. At most nine rules are kept.
+    """
     rules = [str(rule) for rule in invariants.get("rules", [])]
+    keywords = invariants.get("boot_rule_keywords") or DEFAULT_BOOT_RULE_KEYWORDS
+    tokens = [str(token).lower() for token in keywords]
     keep = []
     for rule in rules:
         lower = rule.lower()
-        if any(
-            token in lower
-            for token in [
-                "holdout",
-                "side effect",
-                "recursive",
-                "boot.md",
-            ]
-        ):
+        if any(token in lower for token in tokens):
             keep.append(rule)
     return keep[:9]
 

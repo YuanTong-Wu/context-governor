@@ -1,0 +1,22 @@
+# Python and OS noise
+__pycache__/
+*.pyc
+.DS_Store
+.pytest_cache/
+
+# Audit and run outputs. They record absolute local paths; never commit them.
+var/
+
+# Files the governor regenerates on every run when a workspace is run in place.
+# This repository ships tools, not a governed workspace, so they are ignored here.
+BOOT.md
+**/context/indexes/
+**/context/generated/
+**/context/read_logs/
+**/context/logs/
+**/context/global/
+**/context/projects/
+**/context/quarantine/
+**/context/budgets/
+**/context/TASK_STATE.json
+**/context/CURRENT_VERDICT.json

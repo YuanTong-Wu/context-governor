@@ -1,0 +1,27 @@
+{
+  "authority_levels_version": "1.0",
+  "levels": [
+    {"level": 100, "name": "raw_official_evidence", "description": "Original official evidence."},
+    {"level": 95, "name": "fingerprinted_raw_manifest", "description": "Raw archive manifest with file fingerprints."},
+    {"level": 90, "name": "audited_manifest", "description": "Audited manifest."},
+    {"level": 85, "name": "script_output_with_manifest", "description": "Script output with a source manifest."},
+    {"level": 80, "name": "summary_or_verdict", "description": "summary.json and verdict.json."},
+    {"level": 75, "name": "frozen_schema", "description": "Frozen field format."},
+    {"level": 70, "name": "system_invariant", "description": "Fixed system rule."},
+    {"level": 60, "name": "model_report", "description": "Model-generated report."},
+    {"level": 50, "name": "human_run_note", "description": "Human run note."},
+    {"level": 40, "name": "historical_summary", "description": "Historical summary."},
+    {"level": 30, "name": "draft", "description": "Draft."},
+    {"level": 20, "name": "superseded_old_file", "description": "Superseded old file."},
+    {"level": 0, "name": "archived_or_deprecated", "description": "Archived or deprecated file."}
+  ],
+  "conflict_rules": [
+    "Higher authority files override lower authority files.",
+    "At the same authority level, use the newest created_at_utc.",
+    "For evidence issues, raw archives and manifests override reports.",
+    "For current phase issues, TASK_STATE.json overrides old reports.",
+    "For system boundaries, SYSTEM_INVARIANTS.json overrides old archived files.",
+    "When compressed context conflicts with source manifests, source manifests win.",
+    "When BOOT.md conflicts with SYSTEM_INVARIANTS.json, SYSTEM_INVARIANTS.json wins and BOOT.md must be rebuilt."
+  ]
+}
